@@ -3,28 +3,31 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+//todo write tests
 public class Main {
+  static byte NOP = 0, LDA = 1, ADD = 2, SUB = 3, STA = 4, LDI = 5, JMP = 6, JC = 7, JZ = 8, JEQ = 9, OUT = 14, HLT = 15;
 
-  static byte[] ram = new byte[128 * 1024];
-  static byte programCounter;
-  static byte aRegister;
-  static byte bRegister;
-  static byte outputRegister;
-  static byte instructionRegister;
-  static byte bus;
-  static byte memoryAddressRegister;
+  //@todo use labels, to automatically map memory addresses
+  //@change me
+  private static final byte[] programToExecute = {
+    LDA, 6,     //0
+    ADD, 7,     //2
+    OUT,        //4
+    HLT,        //5
+    28,
+    14
+  };
+  private static void loadProgram() {
+    System.arraycopy(programToExecute, 0, ram, 0, programToExecute.length);
+  }
 
   public static void main(String[] args) {
     loadProgram();
 
     while (instructionRegister != HLT) {
-      System.out.println();
-      System.out.println("#####################");
-      System.out.printf("      LINE %d\n", programCounter);
-      System.out.println("#####################");
+      printNextLineComment(programCounter);
       for (int microStep = 0; microStep < OPCODES_MICROS[0].length; microStep++) {
-        System.out.println();
-        System.out.printf("___STEP %d___\n", microStep);
+        printNextMicrocodeStepComment(microStep);
         int[] opcode = OPCODES_MICROS[instructionRegister];
         if (opcode[microStep] == 0) break;
         for (int microcode : MICROCODES) {
@@ -35,19 +38,6 @@ public class Main {
         bus = 0;
       }
     }
-  }
-
-  private static void loadProgram() {
-    byte[] program = {
-      LDA, 6,     //0
-      ADD, 7,     //2
-      OUT,        //4
-      HLT,        //5
-      28,
-      14
-    };
-
-    System.arraycopy(program, 0, ram, 0, program.length);
   }
 
   static int HLTM = 0b1000000000000000;// Halt clock                   // PIN 17 - IO7 - 1000_0000_0000_0000 - 80
@@ -67,8 +57,58 @@ public class Main {
   static int J =  0b0000000000000010;  // Jump (program counter in)    // PIN 10 - IO1 - 0000_0000_0000_0010 - 02
   static int RS = 0b0000000000000001;  // Microcode counter reset      // PIN 9  - IO0 - 0000_0000_0000_0001 - 01
 
+  //Order of precedence is important, out should be before in
+  static int[] MICROCODES = {RO, NN, AO, EO, CO, SU, BI, OI, CE, J, RS, MI, RI, II, AI, HLTM};
+
+  static int[][] OPCODES_MICROS = {
+    { CO|MI,  RO|II|CE,  RS,     0,        0,        0,        0,     0 },   // 0000 - NOP
+    { CO|MI,  RO|II|CE,  CO|MI,  RO|MI|CE, RO|AI,    RS,       0,     0 },   // 0001 - LDA
+    { CO|MI,  RO|II|CE,  CO|MI,  RO|MI|CE, RO|BI,    EO|AI,    RS,    0 },   // 0010 - ADD
+    { CO|MI,  RO|II|CE,  CO|MI,  RO|MI|CE, RO|BI,    EO|AI|SU, RS,    0 },   // 0011 - SUB
+    { CO|MI,  RO|II|CE,  CO|MI,  RO|MI|CE, AO|RI,    RS,       0,     0 },   // 0100 - STA
+    { CO|MI,  RO|II|CE,  CO|MI,  RO|AI|CE, RS,       0,        0,     0 },   // 0101 - LDI
+    { CO|MI,  RO|II|CE,  CO|MI,  RO|J,     RS,       0,        0,     0 },   // 0110 - JMP
+    { CO|MI,  RO|II|CE,  CE,     RS,       0,        0,        0,     0 },   // 0111 - JC
+    { CO|MI,  RO|II|CE,  CE,     RS,       0,        0,        0,     0 },   // 1000 - JZ
+    { CO|MI,  RO|II|CE,  CO|MI,  RO|BI|CE, EO|SU|CE, RS,       0,     0 },   // 1001 - JEQ
+    { CO|MI,  RO|II|CE,  0,      0,        0,        0,        0,     0 },   // 1010
+    { CO|MI,  RO|II|CE,  0,      0,        0,        0,        0,     0 },   // 1011
+    { CO|MI,  RO|II|CE,  0,      0,        0,        0,        0,     0 },   // 1100
+    { CO|MI,  RO|II|CE,  0,      0,        0,        0,        0,     0 },   // 1101
+    { CO|MI,  RO|II|CE,  AO|OI,  RS,       0,        0,        0,     0 },   // 1110 - OUT
+    { CO|MI,  RO|II|CE,  HLTM,   0,        0,        0,        0,     0 },   // 1111 - HLT
+  };
+
+  static byte[] ram = new byte[128 * 1024];
+  static byte programCounter;
+  static byte aRegister;
+  static byte bRegister;
+  static byte outputRegister;
+  static byte instructionRegister;
+  static byte bus;
+  static byte memoryAddressRegister;
+  static List<String> opcodeLabels = new ArrayList<>() {{
+    add("NOP");
+    add("LDA");
+    add("ADD");
+    add("SUB");
+    add("STA");
+    add("LDI");
+    add("JMP");
+    add("JC");
+    add("JZ");
+    add("JEQ");
+    add("NOP");
+    add("NOP");
+    add("NOP");
+    add("NOP");
+    add("OUT");
+    add("HLT");
+  }};
+
+  //@todo verify all conditional jumps
   static Map<Integer, Runnable> commands = new HashMap<>() {{
-    put(HLTM, () -> System.out.printf("Program ended! Out: %d\n", outputRegister));
+    put(HLTM, () -> System.out.printf("Program ended on line %d, latest output: %d\n", programCounter, outputRegister));
     put(MI, () -> {
       memoryAddressRegister = bus;
       System.out.printf("bus -> %d -> memory address register\n", bus);
@@ -84,7 +124,7 @@ public class Main {
     put(NN, () -> System.out.println("noop"));
     put(II, () -> {
       instructionRegister = bus;
-      System.out.printf("bus -> %d (%s) -> instruction register\n", bus, opcodeLabels.get(bus));
+      System.out.printf("bus -> %d -> instruction register, executing %s\n", bus, opcodeLabels.get(bus));
     });
     put(AI, () -> {
       aRegister = bus;
@@ -126,56 +166,15 @@ public class Main {
     });
   }};
 
-  //Order of precedence is important, out should be before in
-  static int[] MICROCODES = {RO, NN, AO, EO, CO, SU, BI, OI, CE, J, RS, MI, RI, II, AI, HLTM};
+  private static void printNextLineComment(byte lineNumber) {
+    System.out.println();
+    System.out.println("#####################");
+    System.out.printf("      LINE %d\n", programCounter);
+    System.out.println("#####################");
+  }
 
-  static int[][] OPCODES_MICROS = {
-    { CO|MI,  RO|II|CE,  RS,     0,        0,        0,        0,     0 },   // 0000 - NOP
-    { CO|MI,  RO|II|CE,  CO|MI,  RO|MI|CE, RO|AI,    RS,       0,     0 },   // 0001 - LDA
-    { CO|MI,  RO|II|CE,  CO|MI,  RO|MI|CE, RO|BI,    EO|AI,    RS,    0 },   // 0010 - ADD
-    { CO|MI,  RO|II|CE,  CO|MI,  RO|MI|CE, RO|BI,    EO|AI|SU, RS,    0 },   // 0011 - SUB
-    { CO|MI,  RO|II|CE,  CO|MI,  RO|MI|CE, AO|RI,    RS,       0,     0 },   // 0100 - STA
-    { CO|MI,  RO|II|CE,  CO|MI,  RO|AI|CE, RS,       0,        0,     0 },   // 0101 - LDI
-    { CO|MI,  RO|II|CE,  CO|MI,  RO|J,     RS,       0,        0,     0 },   // 0110 - JMP
-    { CO|MI,  RO|II|CE,  CE,     RS,       0,        0,        0,     0 },   // 0111 - JC
-    { CO|MI,  RO|II|CE,  CE,     RS,       0,        0,        0,     0 },   // 1000 - JZ
-    { CO|MI,  RO|II|CE,  CO|MI,  RO|BI|CE, EO|SU|CE, RS,       0,     0 },   // 1001 - JEQ
-    { CO|MI,  RO|II|CE,  0,      0,        0,        0,        0,     0 },   // 1010
-    { CO|MI,  RO|II|CE,  0,      0,        0,        0,        0,     0 },   // 1011
-    { CO|MI,  RO|II|CE,  0,      0,        0,        0,        0,     0 },   // 1100
-    { CO|MI,  RO|II|CE,  0,      0,        0,        0,        0,     0 },   // 1101
-    { CO|MI,  RO|II|CE,  AO|OI,  RS,       0,        0,        0,     0 },   // 1110 - OUT
-    { CO|MI,  RO|II|CE,  HLTM,   0,        0,        0,        0,     0 },   // 1111 - HLT
-  };
-
-  static byte NOP = 0;
-  static byte LDA = 1;
-  static byte ADD = 2;
-  static byte SUB = 3;
-  static byte STA = 4;
-  static byte LDI = 5;
-  static byte JMP = 6;
-  static byte JC = 7;
-  static byte JZ = 8;
-  static byte JEQ = 9;
-  static byte OUT = 14;
-  static byte HLT = 15;
-  static List<String> opcodeLabels = new ArrayList<>() {{
-    add("NOP");
-    add("LDA");
-    add("ADD");
-    add("SUB");
-    add("STA");
-    add("LDI");
-    add("JMP");
-    add("JC");
-    add("JZ");
-    add("JEQ");
-    add("NOP");
-    add("NOP");
-    add("NOP");
-    add("NOP");
-    add("OUT");
-    add("HLT");
-  }};
+  private static void printNextMicrocodeStepComment(int step) {
+    System.out.println();
+    System.out.printf("___STEP %d___\n", step);
+  }
 }
