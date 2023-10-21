@@ -16,16 +16,6 @@ public class Main {
     List<Boolean> testResults = new ArrayList<>();
 
     testResults.add(runTest(new byte[]{
-      LDI, 1,
-      STA, 15,
-      LDI, 3,
-      SUB, 15,
-      JZ, 12,
-      JMP, 6,
-      HLT
-    }, 0));
-
-    testResults.add(runTest(new byte[]{
       LDA, 6,
       ADD, 7,
       OUT,
@@ -33,6 +23,36 @@ public class Main {
       28,
       14
     }, 42));
+
+    testResults.add(runTest(new byte[]{
+      LDA, 6,
+      SUB, 7,
+      OUT,
+      HLT,
+      50,
+      8
+    }, 42));
+
+    testResults.add(runTest(new byte[]{
+      LDI, 1,
+      STA, 15,
+      LDI, 3,
+      SUB, 15,
+      JZ, 12,
+      JMP, 6,
+      OUT,
+      HLT
+    }, 0));
+
+    testResults.add(runTest(new byte[]{
+      ADD, 9,
+      JEQ, 10, 7,
+      JMP, 0,
+      OUT,
+      HLT,
+      1,
+      2
+    }, 2));
 
     testResults.forEach((e) -> System.out.print(e ? "." : "F"));
   }
@@ -140,8 +160,6 @@ public class Main {
     });
     put(AI, () -> {
       aRegister = bus;
-      zeroFlag = bus == 0 ? 1 : 0;
-      System.out.printf("Zero flag set to %d\n", zeroFlag);
       System.out.printf("bus -> %d -> A register\n", bus);
     });
     put(AO, () -> {
@@ -155,10 +173,16 @@ public class Main {
       } else {
         sum = aRegister - bRegister;
       }
-      zeroFlag = sum == 0 ? 1 : 0;
-      System.out.printf("Zero flag set to %d\n", zeroFlag);
-      carryFlag = sum < Byte.MIN_VALUE || sum > Byte.MAX_VALUE ? 1 : 0;
-      System.out.printf("Carry flag set to %d\n", carryFlag);
+      int newZeroFlag = sum == 0 ? 1 : 0;
+      if (newZeroFlag != zeroFlag) {
+        zeroFlag = newZeroFlag;
+        System.out.printf("Zero flag set to %d\n", zeroFlag);
+      }
+      int newCarryFlag = isSubtract || sum > Byte.MAX_VALUE ? 1 : 0;
+      if (newCarryFlag != carryFlag) {
+        carryFlag = newCarryFlag;
+        System.out.printf("Carry flag set to %d\n", carryFlag);
+      }
       if (sum < Byte.MIN_VALUE) sum += 255;
       if (sum > Byte.MAX_VALUE) sum -= 255;
       bus = (byte) sum;
@@ -221,7 +245,7 @@ public class Main {
       { CO|MI,  RO|II|CE,  CO|MI,  RO|J,     RS,       0,        0,     0 },   // 0110 - JMP
       { CO|MI,  RO|II|CE,  CE,     RS,       0,        0,        0,     0 },   // 0111 - JC
       { CO|MI,  RO|II|CE,  CE,     RS,       0,        0,        0,     0 },   // 1000 - JZ
-      { CO|MI,  RO|II|CE,  CO|MI,  RO|BI|CE, EO|SU|CE, RS,       0,     0 },   // 1001 - JEQ
+      { CO|MI,  RO|II|CE,  CO|MI,  RO|MI|CE, RO|BI,    EO|SU,    CE,    0 },   // 1001 - JEQ
       { CO|MI,  RO|II|CE,  0,      0,        0,        0,        0,     0 },   // 1010
       { CO|MI,  RO|II|CE,  0,      0,        0,        0,        0,     0 },   // 1011
       { CO|MI,  RO|II|CE,  0,      0,        0,        0,        0,     0 },   // 1100
@@ -233,7 +257,7 @@ public class Main {
     //zero flag = 0, carry flag = 0
     OPCODES[FLAGS_Z0C0] = deepCopy(template);
 
-    //zero glag = 0, carry flag = 1
+    //zero flag = 0, carry flag = 1
     OPCODES[FLAGS_Z0C1] = deepCopy(template);
     OPCODES[FLAGS_Z0C1][JC][2] = CO|MI;
     OPCODES[FLAGS_Z0C1][JC][3] = RO|J;
@@ -245,9 +269,8 @@ public class Main {
     OPCODES[FLAGS_Z1C0][JZ][3] = RO|J;
     OPCODES[FLAGS_Z1C0][JZ][4] = RS;
 
-    OPCODES[FLAGS_Z1C0][JEQ][5] = CO|MI;
-    OPCODES[FLAGS_Z1C0][JEQ][6] = RO|J;
-    OPCODES[FLAGS_Z1C0][JEQ][7] = RS;
+    OPCODES[FLAGS_Z1C0][JEQ][6] = CO|MI;
+    OPCODES[FLAGS_Z1C0][JEQ][7] = RO|J|CE;
 
     // ZF = 1, CF = 1
     OPCODES[FLAGS_Z1C1] = deepCopy(template);
@@ -258,6 +281,9 @@ public class Main {
     OPCODES[FLAGS_Z1C1][JZ][2] = CO|MI;
     OPCODES[FLAGS_Z1C1][JZ][3] = RO|J;
     OPCODES[FLAGS_Z1C1][JZ][4] = RS;
+
+    OPCODES[FLAGS_Z1C1][JEQ][6] = CO|MI;
+    OPCODES[FLAGS_Z1C1][JEQ][7] = RO|J|CE;
   }
 
   private static int[][] deepCopy(int[][] a) {
