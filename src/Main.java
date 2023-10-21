@@ -10,25 +10,24 @@ public class Main {
   //@todo use labels, to automatically map memory addresses
   //@change me
   private static final byte[] programToExecute = {
-    LDA, 6,     //0
-    ADD, 7,     //2
-    OUT,        //4
-    HLT,        //5
-    28,
-    14
+    LDI, 1,
+    STA, 15,
+    LDI, 3,
+    SUB, 15,
+    JZ, 12,
+    JMP, 6,
+    HLT
   };
-  private static void loadProgram() {
-    System.arraycopy(programToExecute, 0, ram, 0, programToExecute.length);
-  }
 
   public static void main(String[] args) {
     loadProgram();
+    assignFlagCommands();
 
     while (instructionRegister != HLT) {
       printNextLineComment(programCounter);
-      for (int microStep = 0; microStep < OPCODES_MICROS[0].length; microStep++) {
+      for (int microStep = 0; microStep < OPCODES[carryFlag | (zeroFlag<<1)][0].length; microStep++) {
         printNextMicrocodeStepComment(microStep);
-        int[] opcode = OPCODES_MICROS[instructionRegister];
+        int[] opcode = OPCODES[carryFlag | (zeroFlag<<1)][instructionRegister];
         if (opcode[microStep] == 0) break;
         for (int microcode : MICROCODES) {
           if ((opcode[microStep] & microcode) > 0) {
@@ -58,26 +57,14 @@ public class Main {
   static int RS = 0b0000000000000001;  // Microcode counter reset      // PIN 9  - IO0 - 0000_0000_0000_0001 - 01
 
   //Order of precedence is important, out should be before in
-  static int[] MICROCODES = {RO, NN, AO, EO, CO, SU, BI, OI, CE, J, RS, MI, RI, II, AI, HLTM};
+  static int[] MICROCODES = {RO, NN, AO, SU, EO, CO, BI, OI, CE, J, RS, MI, RI, II, AI, HLTM};
 
-  static int[][] OPCODES_MICROS = {
-    { CO|MI,  RO|II|CE,  RS,     0,        0,        0,        0,     0 },   // 0000 - NOP
-    { CO|MI,  RO|II|CE,  CO|MI,  RO|MI|CE, RO|AI,    RS,       0,     0 },   // 0001 - LDA
-    { CO|MI,  RO|II|CE,  CO|MI,  RO|MI|CE, RO|BI,    EO|AI,    RS,    0 },   // 0010 - ADD
-    { CO|MI,  RO|II|CE,  CO|MI,  RO|MI|CE, RO|BI,    EO|AI|SU, RS,    0 },   // 0011 - SUB
-    { CO|MI,  RO|II|CE,  CO|MI,  RO|MI|CE, AO|RI,    RS,       0,     0 },   // 0100 - STA
-    { CO|MI,  RO|II|CE,  CO|MI,  RO|AI|CE, RS,       0,        0,     0 },   // 0101 - LDI
-    { CO|MI,  RO|II|CE,  CO|MI,  RO|J,     RS,       0,        0,     0 },   // 0110 - JMP
-    { CO|MI,  RO|II|CE,  CE,     RS,       0,        0,        0,     0 },   // 0111 - JC
-    { CO|MI,  RO|II|CE,  CE,     RS,       0,        0,        0,     0 },   // 1000 - JZ
-    { CO|MI,  RO|II|CE,  CO|MI,  RO|BI|CE, EO|SU|CE, RS,       0,     0 },   // 1001 - JEQ
-    { CO|MI,  RO|II|CE,  0,      0,        0,        0,        0,     0 },   // 1010
-    { CO|MI,  RO|II|CE,  0,      0,        0,        0,        0,     0 },   // 1011
-    { CO|MI,  RO|II|CE,  0,      0,        0,        0,        0,     0 },   // 1100
-    { CO|MI,  RO|II|CE,  0,      0,        0,        0,        0,     0 },   // 1101
-    { CO|MI,  RO|II|CE,  AO|OI,  RS,       0,        0,        0,     0 },   // 1110 - OUT
-    { CO|MI,  RO|II|CE,  HLTM,   0,        0,        0,        0,     0 },   // 1111 - HLT
-  };
+  static int FLAGS_Z0C0 = 0;
+  static int FLAGS_Z0C1 = 1;
+  static int FLAGS_Z1C0 = 2;
+  static int FLAGS_Z1C1 = 3;
+
+  static int[][][] OPCODES = new int[4][16][8];
 
   static byte[] ram = new byte[128 * 1024];
   static byte programCounter;
@@ -87,6 +74,9 @@ public class Main {
   static byte instructionRegister;
   static byte bus;
   static byte memoryAddressRegister;
+  static int zeroFlag;
+  static int carryFlag;
+  static boolean isSubstract;
   static List<String> opcodeLabels = new ArrayList<>() {{
     add("NOP");
     add("LDA");
@@ -108,7 +98,7 @@ public class Main {
 
   //@todo verify all conditional jumps
   static Map<Integer, Runnable> commands = new HashMap<>() {{
-    put(HLTM, () -> System.out.printf("Program ended on line %d, latest output: %d\n", programCounter, outputRegister));
+    put(HLTM, () -> System.out.printf("Program ended on line %d\nout: %d\nA: %d\nB: %d\n", programCounter, outputRegister, aRegister, bRegister));
     put(MI, () -> {
       memoryAddressRegister = bus;
       System.out.printf("bus -> %d -> memory address register\n", bus);
@@ -128,6 +118,8 @@ public class Main {
     });
     put(AI, () -> {
       aRegister = bus;
+      zeroFlag = bus == 0 ? 1 : 0;
+      System.out.printf("Zero flag set to %d\n", zeroFlag);
       System.out.printf("bus -> %d -> A register\n", bus);
     });
     put(AO, () -> {
@@ -135,12 +127,24 @@ public class Main {
       System.out.printf("A register -> %d -> bus\n", bus);
     });
     put(EO, () -> {
-      bus = (byte) (aRegister + bRegister);
-      System.out.printf("A + B -> %d -> bus\n", bus);
+      int sum;
+      if (!isSubstract) {
+        sum = aRegister + bRegister;
+      } else {
+        sum = aRegister - bRegister;
+      }
+      zeroFlag = sum == 0 ? 1 : 0;
+      System.out.printf("Zero flag set to %d\n", zeroFlag);
+      carryFlag = sum < Byte.MIN_VALUE || sum > Byte.MAX_VALUE ? 1 : 0;
+      System.out.printf("Carry flag set to %d\n", carryFlag);
+      if (sum < Byte.MIN_VALUE) sum += 255;
+      if (sum > Byte.MAX_VALUE) sum -= 255;
+      bus = (byte) sum;
+      System.out.printf("A %s B -> %d -> bus\n", isSubstract ? "-" : "+", bus);
+      isSubstract = false;
     });
     put(SU, () -> {
-      bus = (byte) (aRegister - bRegister);
-      System.out.printf("A - B -> %d -> bus\n", bus);
+      isSubstract = true;
     });
     put(BI, () -> {
       bRegister = bus;
@@ -165,6 +169,68 @@ public class Main {
     put(RS, () -> {
     });
   }};
+
+  private static void loadProgram() {
+    System.arraycopy(programToExecute, 0, ram, 0, programToExecute.length);
+  }
+
+  private static void assignFlagCommands() {
+    int [][] template = {
+      { CO|MI,  RO|II|CE,  RS,     0,        0,        0,        0,     0 },   // 0000 - NOP
+      { CO|MI,  RO|II|CE,  CO|MI,  RO|MI|CE, RO|AI,    RS,       0,     0 },   // 0001 - LDA
+      { CO|MI,  RO|II|CE,  CO|MI,  RO|MI|CE, RO|BI,    EO|AI,    RS,    0 },   // 0010 - ADD
+      { CO|MI,  RO|II|CE,  CO|MI,  RO|MI|CE, RO|BI,    EO|AI|SU, RS,    0 },   // 0011 - SUB
+      { CO|MI,  RO|II|CE,  CO|MI,  RO|MI|CE, AO|RI,    RS,       0,     0 },   // 0100 - STA
+      { CO|MI,  RO|II|CE,  CO|MI,  RO|AI|CE, RS,       0,        0,     0 },   // 0101 - LDI
+      { CO|MI,  RO|II|CE,  CO|MI,  RO|J,     RS,       0,        0,     0 },   // 0110 - JMP
+      { CO|MI,  RO|II|CE,  CE,     RS,       0,        0,        0,     0 },   // 0111 - JC
+      { CO|MI,  RO|II|CE,  CE,     RS,       0,        0,        0,     0 },   // 1000 - JZ
+      { CO|MI,  RO|II|CE,  CO|MI,  RO|BI|CE, EO|SU|CE, RS,       0,     0 },   // 1001 - JEQ
+      { CO|MI,  RO|II|CE,  0,      0,        0,        0,        0,     0 },   // 1010
+      { CO|MI,  RO|II|CE,  0,      0,        0,        0,        0,     0 },   // 1011
+      { CO|MI,  RO|II|CE,  0,      0,        0,        0,        0,     0 },   // 1100
+      { CO|MI,  RO|II|CE,  0,      0,        0,        0,        0,     0 },   // 1101
+      { CO|MI,  RO|II|CE,  AO|OI,  RS,       0,        0,        0,     0 },   // 1110 - OUT
+      { CO|MI,  RO|II|CE,  HLTM,   0,        0,        0,        0,     0 },   // 1111 - HLT
+    };
+
+    //zero flag = 0, carry flag = 0
+    OPCODES[FLAGS_Z0C0] = deepCopy(template);
+
+    //zero glag = 0, carry flag = 1
+    OPCODES[FLAGS_Z0C1] = deepCopy(template);
+    OPCODES[FLAGS_Z0C1][JC][2] = CO|MI;
+    OPCODES[FLAGS_Z0C1][JC][3] = RO|J;
+    OPCODES[FLAGS_Z0C1][JC][4] = RS;
+
+    // ZF = 1, CF = 0
+    OPCODES[FLAGS_Z1C0] = deepCopy(template);
+    OPCODES[FLAGS_Z1C0][JZ][2] = CO|MI;
+    OPCODES[FLAGS_Z1C0][JZ][3] = RO|J;
+    OPCODES[FLAGS_Z1C0][JZ][4] = RS;
+
+    OPCODES[FLAGS_Z1C0][JEQ][5] = CO|MI;
+    OPCODES[FLAGS_Z1C0][JEQ][6] = RO|J;
+    OPCODES[FLAGS_Z1C0][JEQ][7] = RS;
+
+    // ZF = 1, CF = 1
+    OPCODES[FLAGS_Z1C1] = deepCopy(template);
+    OPCODES[FLAGS_Z1C1][JC][2] = CO|MI;
+    OPCODES[FLAGS_Z1C1][JC][3] = RO|J;
+    OPCODES[FLAGS_Z1C1][JC][4] = RS;
+
+    OPCODES[FLAGS_Z1C1][JZ][2] = CO|MI;
+    OPCODES[FLAGS_Z1C1][JZ][3] = RO|J;
+    OPCODES[FLAGS_Z1C1][JZ][4] = RS;
+  }
+
+  private static int[][] deepCopy(int[][] a) {
+    int[][] result = new int[a.length][];
+    for (int i = 0; i < a.length; i++) {
+      result[i] = a[i].clone();
+    }
+    return result;
+  }
 
   private static void printNextLineComment(byte lineNumber) {
     System.out.println();
