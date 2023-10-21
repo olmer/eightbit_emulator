@@ -7,21 +7,39 @@ import java.util.Map;
 public class Main {
   static byte NOP = 0, LDA = 1, ADD = 2, SUB = 3, STA = 4, LDI = 5, JMP = 6, JC = 7, JZ = 8, JEQ = 9, OUT = 14, HLT = 15;
 
-  //@todo use labels, to automatically map memory addresses
-  //@change me
-  private static final byte[] programToExecute = {
-    LDI, 1,
-    STA, 15,
-    LDI, 3,
-    SUB, 15,
-    JZ, 12,
-    JMP, 6,
-    HLT
-  };
-
   public static void main(String[] args) {
-    loadProgram();
-    assignFlagCommands();
+    init();
+
+    //@todo use labels, to automatically map memory addresses
+    //@change me
+
+    List<Boolean> testResults = new ArrayList<>();
+
+    testResults.add(runTest(new byte[]{
+      LDI, 1,
+      STA, 15,
+      LDI, 3,
+      SUB, 15,
+      JZ, 12,
+      JMP, 6,
+      HLT
+    }, 0));
+
+    testResults.add(runTest(new byte[]{
+      LDA, 6,
+      ADD, 7,
+      OUT,
+      HLT,
+      28,
+      14
+    }, 42));
+
+    testResults.forEach((e) -> System.out.print(e ? "." : "F"));
+  }
+
+  public static byte run(byte[] program) {
+    reset();
+    loadProgram(program);
 
     while (instructionRegister != HLT) {
       printNextLineComment(programCounter);
@@ -37,6 +55,8 @@ public class Main {
         bus = 0;
       }
     }
+
+    return outputRegister;
   }
 
   static int HLTM = 0b1000000000000000;// Halt clock                   // PIN 17 - IO7 - 1000_0000_0000_0000 - 80
@@ -67,6 +87,8 @@ public class Main {
   static int[][][] OPCODES = new int[4][16][8];
 
   static byte[] ram = new byte[128 * 1024];
+
+  //volatile state
   static byte programCounter;
   static byte aRegister;
   static byte bRegister;
@@ -76,7 +98,7 @@ public class Main {
   static byte memoryAddressRegister;
   static int zeroFlag;
   static int carryFlag;
-  static boolean isSubstract;
+  static boolean isSubtract;
   static List<String> opcodeLabels = new ArrayList<>() {{
     add("NOP");
     add("LDA");
@@ -128,7 +150,7 @@ public class Main {
     });
     put(EO, () -> {
       int sum;
-      if (!isSubstract) {
+      if (!isSubtract) {
         sum = aRegister + bRegister;
       } else {
         sum = aRegister - bRegister;
@@ -140,11 +162,11 @@ public class Main {
       if (sum < Byte.MIN_VALUE) sum += 255;
       if (sum > Byte.MAX_VALUE) sum -= 255;
       bus = (byte) sum;
-      System.out.printf("A %s B -> %d -> bus\n", isSubstract ? "-" : "+", bus);
-      isSubstract = false;
+      System.out.printf("A %s B -> %d -> bus\n", isSubtract ? "-" : "+", bus);
+      isSubtract = false;
     });
     put(SU, () -> {
-      isSubstract = true;
+      isSubtract = true;
     });
     put(BI, () -> {
       bRegister = bus;
@@ -170,11 +192,25 @@ public class Main {
     });
   }};
 
-  private static void loadProgram() {
+  private static void loadProgram(byte[] programToExecute) {
     System.arraycopy(programToExecute, 0, ram, 0, programToExecute.length);
   }
 
-  private static void assignFlagCommands() {
+  private static void reset() {
+    ram = new byte[128 * 1024];
+    programCounter = 0;
+    aRegister = 0;
+    bRegister = 0;
+    outputRegister = 0;
+    instructionRegister = 0;
+    bus = 0;
+    memoryAddressRegister = 0;
+    zeroFlag = 0;
+    carryFlag = 0;
+    isSubtract = false;
+  }
+
+  private static void init() {
     int [][] template = {
       { CO|MI,  RO|II|CE,  RS,     0,        0,        0,        0,     0 },   // 0000 - NOP
       { CO|MI,  RO|II|CE,  CO|MI,  RO|MI|CE, RO|AI,    RS,       0,     0 },   // 0001 - LDA
@@ -242,5 +278,9 @@ public class Main {
   private static void printNextMicrocodeStepComment(int step) {
     System.out.println();
     System.out.printf("___STEP %d___\n", step);
+  }
+
+  private static boolean runTest(byte[] program, int expectedOutput) {
+    return run(program) == (byte)expectedOutput;
   }
 }
