@@ -13,7 +13,7 @@ public class Main {
     //@todo use labels, to automatically map memory addresses
     //@change me
 
-    List<Boolean> testResults = new ArrayList<>();
+    List<String> testResults = new ArrayList<>();
 
     testResults.add(runTest(new byte[]{
       LDA, 6,
@@ -22,7 +22,7 @@ public class Main {
       HLT,
       28,
       14
-    }, 42));
+    }, 42, "Addition"));
 
     testResults.add(runTest(new byte[]{
       LDA, 6,
@@ -31,7 +31,7 @@ public class Main {
       HLT,
       50,
       8
-    }, 42));
+    }, 42, "Subtraction"));
 
     testResults.add(runTest(new byte[]{
       LDI, 1,
@@ -42,7 +42,7 @@ public class Main {
       JMP, 6,
       OUT,
       HLT
-    }, 0));
+    }, 0, "Jump zero"));
 
     testResults.add(runTest(new byte[]{
       ADD, 9,
@@ -52,9 +52,28 @@ public class Main {
       HLT,
       1,
       2
-    }, 2));
+    }, 2, "Jump equal"));
 
-    testResults.forEach((e) -> System.out.print(e ? "." : "F"));
+    testResults.add(runTest(new byte[]{
+      LDI, 126,
+      ADD, 10,
+      JC, 8,
+      JMP, 2,
+      OUT,
+      HLT,
+      1
+    }, -128, "Jump carry"));
+
+    testResults.add(runTest(new byte[]{
+      LDI, 3,
+      SUB, 8,
+      JC, 2,
+      OUT,
+      HLT,
+      1
+    }, 0, "Jump carry on zero"));
+
+    testResults.forEach(System.out::println);
   }
 
   public static byte run(byte[] program) {
@@ -178,13 +197,13 @@ public class Main {
         zeroFlag = newZeroFlag;
         System.out.printf("Zero flag set to %d\n", zeroFlag);
       }
-      int newCarryFlag = isSubtract || sum > Byte.MAX_VALUE ? 1 : 0;
+      int newCarryFlag = isSubtract && sum != 0 || sum > Byte.MAX_VALUE ? 1 : 0;
       if (newCarryFlag != carryFlag) {
         carryFlag = newCarryFlag;
         System.out.printf("Carry flag set to %d\n", carryFlag);
       }
-      if (sum < Byte.MIN_VALUE) sum += 255;
-      if (sum > Byte.MAX_VALUE) sum -= 255;
+      if (sum < Byte.MIN_VALUE) sum += 256;
+      if (sum > Byte.MAX_VALUE) sum -= 256;
       bus = (byte) sum;
       System.out.printf("A %s B -> %d -> bus\n", isSubtract ? "-" : "+", bus);
       isSubtract = false;
@@ -306,7 +325,8 @@ public class Main {
     System.out.printf("___STEP %d___\n", step);
   }
 
-  private static boolean runTest(byte[] program, int expectedOutput) {
-    return run(program) == (byte)expectedOutput;
+  private static String runTest(byte[] program, int expectedOutput, String testName) {
+    System.out.println("Running " + testName);
+    return run(program) == (byte)expectedOutput ? "." : "\"" + testName + "\" test FAILED!";
   }
 }
