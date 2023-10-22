@@ -5,7 +5,7 @@ import java.util.Map;
 
 //todo write tests
 public class Main {
-  static byte NOP = 0, LDA = 1, ADD = 2, SUB = 3, STA = 4, LDI = 5, JMP = 6, JC = 7, JZ = 8, JEQ = 9, OUT = 14, HLT = 15;
+  static byte NOP = 0, LDA = 1, ADD = 2, SUB = 3, STA = 4, LDI = 5, JMP = 6, JC = 7, JZ = 8, JEQ = 9, ADI = 10, OUT = 14, HLT = 15;
 
   public static void main(String[] args) {
     init();
@@ -72,6 +72,13 @@ public class Main {
       HLT,
       1
     }, 0, "Jump carry on zero"));
+
+    testResults.add(runTest(new byte[]{
+      LDI, 24,
+      ADI, 18,
+      OUT,
+      HLT
+    }, 42, "Add immediate"));
 
     testResults.forEach(System.out::println);
   }
@@ -149,7 +156,7 @@ public class Main {
     add("JC");
     add("JZ");
     add("JEQ");
-    add("NOP");
+    add("ADI");
     add("NOP");
     add("NOP");
     add("NOP");
@@ -265,7 +272,7 @@ public class Main {
       { CO|MI,  RO|II|CE,  CE,     RS,       0,        0,        0,     0 },   // 0111 - JC
       { CO|MI,  RO|II|CE,  CE,     RS,       0,        0,        0,     0 },   // 1000 - JZ
       { CO|MI,  RO|II|CE,  CO|MI,  RO|MI|CE, RO|BI,    EO|SU,    CE,    0 },   // 1001 - JEQ
-      { CO|MI,  RO|II|CE,  0,      0,        0,        0,        0,     0 },   // 1010
+      { CO|MI,  RO|II|CE,  CO|MI,  RO|BI|CE, EO|AI,    RS,       0,     0 },   // 1010 - ADI
       { CO|MI,  RO|II|CE,  0,      0,        0,        0,        0,     0 },   // 1011
       { CO|MI,  RO|II|CE,  0,      0,        0,        0,        0,     0 },   // 1100
       { CO|MI,  RO|II|CE,  0,      0,        0,        0,        0,     0 },   // 1101
