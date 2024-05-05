@@ -15,6 +15,8 @@ public class Main {
 
     List<String> testResults = new ArrayList<>();
 
+    Object[] test = {LDA, 6, "LABEL"};
+
     testResults.add(runTest(new byte[]{
       LDA, 6,
       ADD, 7,
@@ -88,16 +90,20 @@ public class Main {
     loadProgram(program);
 
     while (instructionRegister != HLT) {
-      printNextLineComment(programCounter);
+      printNextLineComment();
       for (int microStep = 0; microStep < OPCODES[carryFlag | (zeroFlag<<1)][0].length; microStep++) {
         printNextMicrocodeStepComment(microStep);
         int[] opcode = OPCODES[carryFlag | (zeroFlag<<1)][instructionRegister];
         if (opcode[microStep] == 0) break;
-        for (int microcode : MICROCODES) {
+        StringBuilder sb = new StringBuilder();
+        for (int microcodeIdx = 0; microcodeIdx < SIGNALS.length; microcodeIdx++) {
+          int microcode = SIGNALS[microcodeIdx];
           if ((opcode[microStep] & microcode) > 0) {
             commands.get(microcode).run();
+            sb.append(SIGNALS_LABELS[microcodeIdx]).append(" ");
           }
         }
+        System.out.println("Signals: " + sb);
         bus = 0;
       }
     }
@@ -123,7 +129,8 @@ public class Main {
   static int RS = 0b0000000000000001;  // Microcode counter reset      // PIN 9  - IO0 - 0000_0000_0000_0001 - 01
 
   //Order of precedence is important, out should be before in
-  static int[] MICROCODES = {RO, NN, AO, SU, EO, CO, BI, OI, CE, J, RS, MI, RI, II, AI, HLTM};
+  static int[] SIGNALS = {RO, NN, AO, SU, EO, CO, BI, OI, CE, J, RS, MI, RI, II, AI, HLTM};
+  static String[] SIGNALS_LABELS = {"RO", "NN", "AO", "SU", "EO", "CO", "BI", "OI", "CE", "J", "RS", "MI", "RI", "II", "AI", "HLTM"};
 
   static int FLAGS_Z0C0 = 0;
   static int FLAGS_Z0C1 = 1;
@@ -182,7 +189,7 @@ public class Main {
     put(NN, () -> System.out.println("noop"));
     put(II, () -> {
       instructionRegister = bus;
-      System.out.printf("bus -> %d -> instruction register, executing %s\n", bus, opcodeLabels.get(bus));
+      System.out.printf("bus -> %d -> instruction register, opcode loaded, executing %s\n", bus, opcodeLabels.get(bus));
     });
     put(AI, () -> {
       aRegister = bus;
@@ -320,7 +327,7 @@ public class Main {
     return result;
   }
 
-  private static void printNextLineComment(byte lineNumber) {
+  private static void printNextLineComment() {
     System.out.println();
     System.out.println("#####################");
     System.out.printf("      LINE %d\n", programCounter);
@@ -329,11 +336,11 @@ public class Main {
 
   private static void printNextMicrocodeStepComment(int step) {
     System.out.println();
-    System.out.printf("___STEP %d___\n", step);
+    System.out.printf("___Microcode %d___\n", step);
   }
 
   private static String runTest(byte[] program, int expectedOutput, String testName) {
     System.out.println("Running " + testName);
-    return run(program) == (byte)expectedOutput ? "." : "\"" + testName + "\" test FAILED!";
+    return run(program) == (byte)expectedOutput ? testName + ": PASSED" : "\"" + testName + "\" FAILED!";
   }
 }
